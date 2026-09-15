@@ -5,18 +5,21 @@
 
 > 📌 **この文書について（はじめに読んでください）**
 > - 個人で作っている Web アプリ（Next.js ＋ PostgreSQL ＋ Docker）の環境構築手順を、**学習用に抜き出したもの**です。
-> - **Step 1〜4・6・7 はこのアプリに依存しない一般的な手順**なので、そのまま実行できます（WSL・Docker・Node・Git・VSCode・mkcert）。
-> - **Step 5 以降はアプリのリポジトリ（ソースコード）が手元にある前提**です。リポジトリは同梱していないので、ここから先は「実際のアプリはこういう構成・順番で組まれている」という**読み物**として読んでください。
+> - **Step 5 以降の多くはアプリのリポジトリ（ソースコード）が手元にある前提**です。リポジトリは同梱していないので、その部分は「実際のアプリはこういう構成・順番で組まれている」という**読み物**として読んでください。どこまで手元で実行できるかは下の「0.」にまとめています。
 > - 文中で **「※本書には未収録」** と付いている文書・手順は同梱していません（読み飛ばして大丈夫です）。
 
 ---
 
 ## 0. この文書の読み方（最初にここだけ読む）
 
-**この文書を最後（Step 12）までやれば「セットアップ完了」**です。
+**流れ**: OS 準備 → 開発ツール → **dev 構成** → **本番構成**
 
-- **流れ**: OS 準備 → 開発ツール → **dev 構成** → **本番構成**
-- **終わると**: ブラウザでログインでき、タスク・収支・株価・ログが使える。DB が毎日自動バックアップされる
+**到達点は2段階あります。**
+
+| | 範囲 | 終わるとどうなるか |
+|---|---|---|
+| **手元で実行できる範囲** | Step 1〜4・6・7 ＋ **寄り道** | 開発ツール（WSL・Docker・Node・Git・VSCode・mkcert）が揃い、**練習用の空の Next.js を `https://localhost:3000` で「安全な接続」として開ける**。🔴 このアプリ（ダッシュボード）の画面は、コードが無いので開けません |
+| **読み物の範囲**（リポジトリがある場合） | Step 5・8〜12 | ブラウザでログインでき、タスク・収支・株価・ログが使える。DB が毎日自動バックアップされる |
 
 ### 各ステップの書き方
 
@@ -38,6 +41,7 @@
 - [ ] Step 5　リポジトリを取得
 - [ ] Step 6　VSCode ＋ Claude Code（推奨）
 - [ ] Step 7　mkcert（HTTPS 証明書）
+- [ ] 寄り道　空の Next.js を動かしてみる（リポジトリ不要）
 - [ ] Step 8　`.env` を作る
 - [ ] Step 9　ホスト側ディレクトリを作る（**事故が起きやすい所**）
 - [ ] Step 10　**dev 構成**を作る（10-1 〜 10-6）
@@ -254,6 +258,8 @@ gh repo create <GitHubアカウント名>/dashboard --private --source=. --remot
 
 **目的**: `https://localhost` を「安全な接続」としてブラウザに信頼させる。 **所要**: 10分
 
+📌 このステップで確認できるのは**証明書ファイルができるところまで**です。ブラウザで「安全な接続」になるかは、次の **「寄り道」** で確かめます。
+
 🔴 **HTTPS は必須です**（省略できません）。セッションクッキーに `__Host-` 接頭辞と `Secure` 属性を使っており、**HTTP ではログインが成立しません**。
 
 CA（認証局）の信頼登録は、ブラウザが動く **Windows 側**で行います。
@@ -284,6 +290,74 @@ ls -l ~/dev/dashboard/certs/
 ```
 
 🔴 **秘密鍵は絶対にコミット・共有しない**: `localhost+2-key.pem` と、mkcert のルート CA 秘密鍵 `rootCA-key.pem`（場所は `mkcert -CAROOT`）。後者が漏れると**任意のドメインの偽証明書**を作られます。
+
+---
+
+## 寄り道. 空の Next.js を動かしてみる（リポジトリ不要）
+
+**目的**: ここまで入れたツールで、実際に Next.js の画面を開いてみる。Step 7 の証明書が効くこともブラウザで確かめる。 **所要**: 10分
+
+📌 **このアプリとは別の、練習用の空プロジェクト**です（`~/dev/hello-next` に作ります）。使うのは Step 1（WSL）・Step 3（Node）・Step 7（証明書）だけで、Docker と Git は要りません。
+📌 **パッケージ管理は、このアプリ本体と同じ pnpm**、**言語は TypeScript** で作ります。pnpm は Step 3 の `corepack enable` で使える状態になっています。
+
+### ① プロジェクトを作る
+
+```bash
+# 【WSL】🔴 /mnt/d ではなくホームディレクトリ配下に作る
+mkdir -p ~/dev && cd ~/dev
+pnpm create next-app@latest hello-next --ts --use-pnpm
+```
+
+- 初回は corepack が `Do you want to continue? [Y/n]` と pnpm のダウンロードを確認してくるので **Y**。練習用プロジェクトには pnpm の版の指定が無いので、その時点の pnpm が使われます。
+- 続けていくつか質問されますが、**すべて Enter（既定値）で構いません**。
+- `--ts` は **TypeScript で作る**指定です（既定値も TypeScript ですが、質問の答え方に関係なく TypeScript になるよう明示しています）。`--use-pnpm` は、依存のインストールに pnpm を使う指定です。
+
+✅ **確認**: `Success! Created hello-next` のように出て、次の2つがあること（**`.tsx` と `tsconfig.json` があれば TypeScript で作られています**）。
+
+```bash
+ls ~/dev/hello-next/tsconfig.json ~/dev/hello-next/app/page.tsx
+# 作成時に src/ を選んだ場合は ~/dev/hello-next/src/app/page.tsx
+```
+
+🔴 **つまずいたら**: `ERR_PNPM_IGNORED_BUILDS`（`Ignored build scripts: …`）で止まったら、pnpm が依存のビルドスクリプトを安全のためブロックしています。`cd ~/dev/hello-next` で移動して `pnpm approve-builds` を実行し、**表示された名前を確認してから**個別に許可してください（`--ignore-scripts` で回避しない）。
+
+### ② HTTP で開く
+
+```bash
+# 【WSL】
+cd ~/dev/hello-next
+pnpm dev
+```
+
+Windows のブラウザで **<http://localhost:3000>** を開きます。
+
+✅ **確認**: Next.js の初期画面が表示されること。
+
+続けて **`app/page.tsx`**（作成時に `src/` を選んだ場合は `src/app/page.tsx`）の文字を書き換えて保存してみてください。**ブラウザが自動で更新**されます（Step 10 の表にある「保存で即反映」がこれです）。
+
+終わったら端末で **Ctrl-C** を押して止めます。
+
+### ③ HTTPS で開く（Step 7 の証明書を使う）
+
+```bash
+# 【WSL】~/dev/hello-next で実行（見やすさのため改行しています）
+pnpm dev --experimental-https \
+  --experimental-https-key  /mnt/d/dashboard-data/certs/localhost+2-key.pem \
+  --experimental-https-cert /mnt/d/dashboard-data/certs/localhost+2.pem
+```
+
+📌 `pnpm dev` の後ろに書いたオプションは、そのまま Next.js（`next dev`）に渡されます。
+
+Windows のブラウザで **<https://localhost:3000>**（今度は **https**）を開きます。
+
+✅ **確認**: 初期画面が表示され、アドレスバーの鍵アイコンが **「安全な接続」** になっていること。
+
+🔴 **つまずいたら**:
+- **証明書の警告が出る** → Windows 側で `mkcert -install` をしていない（Step 7）。または `--experimental-https-key` / `--experimental-https-cert` を付け忘れている。付けずに `--experimental-https` だけで起動すると、Next.js が **WSL 側で**別の証明書を作るため、Windows のブラウザはそれを信頼しません。
+- **`ENOENT` などファイルが見つからないエラー** → 証明書のパスが違う。`ls /mnt/d/dashboard-data/certs/` で2つのファイル名を確認する。
+- **ポート 3000 が使用中** → Next.js が自動で 3001 などに逃げます。端末に表示された URL を開いてください。
+
+📌 ここまでできれば、**手元で実行できる範囲は完了**です。Step 8 以降は、このアプリ本体の手順（読み物）になります。
 
 ---
 

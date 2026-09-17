@@ -93,7 +93,7 @@
 ### 置き場所の方針
 
 - **コードは WSL2 の Linux ファイルシステムに置く**（`~/dev/dashboard`）。`/mnt/d`（Windows 側）に置くとファイル監視とビルドが極端に遅くなります。
-- **データは Windows 側（D ドライブ）に据え置く**。書籍本体・DB バックアップ・mkcert の証明書は D: に置き、コンテナへはバインドマウントで渡します（WSL を作り直しても失われないため）。
+- **データは Windows 側（D ドライブ）に据え置く**。DB バックアップ・mkcert の証明書は D: に置き、コンテナへはバインドマウントで渡します（WSL を作り直しても失われないため）。
 - 📌 この文書に出てくる `D:\dashboard-data\…` ／ `/mnt/d/dashboard-data/…` は**例**です。自分の環境に合わせて読み替えてください（Windows の `D:\` は WSL からは `/mnt/d/` に見えます）。
 
 ### Windows 側に入れるもの / WSL 側に入れるもの
@@ -381,7 +381,6 @@ code .env          # または nano .env
 | `APP_DB_PASSWORD` | アプリ実行用ロール `dashboard_app` のパスワード。**別の値**にする | （別の強い文字列） |
 | `POSTGRES_DB` / `POSTGRES_PORT` | 既定のまま | `dashboard` / `5432` |
 | `DATABASE_URL` | **ホストから叩く用**。`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` と揃える | `postgresql://dashboard:<上のPW>@localhost:5432/dashboard` |
-| `BOOK_ROOT` | 書籍の保存先（WSL から見たパス）。書籍機能を使わなくても**実在するパスを書く**（Step 9 参照） | `/mnt/d/dashboard-data/books` |
 | `PUBLIC_ORIGIN` | 本番構成で開く URL | `https://localhost` |
 | `TRUSTED_IP_HEADER` | 監査ログに記録する IP をどのヘッダから取るか。ローカルは Caddy と対の値 | `x-real-ip` |
 | `HSTS_ENABLED` | **`false` のまま**（下記） | `false` |
@@ -409,7 +408,6 @@ node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
 ```bash
 # 【WSL】~/dev/dashboard で実行
 mkdir -p logs                                  # 構造化ログの出力先（リポジトリ内）
-mkdir -p /mnt/d/dashboard-data/books           # BOOK_ROOT（.env に書いた値と一致させる）
 mkdir -p /mnt/d/dashboard-data/backups/db      # DB バックアップの保存先
 touch certs/extra-ca.pem                       # 中身は空でよい（下記）
 ```
@@ -419,15 +417,15 @@ touch certs/extra-ca.pem                       # 中身は空でよい（下記�
 | 渡し方 | 対象 | 事前に無いとどうなるか |
 |---|---|---|
 | 短い記法（`./logs:/logs`） | `logs/` ・ `certs/extra-ca.pem` | **Docker が root 所有のディレクトリを作る** → コンテナ内の `node`（uid 1000）が書けない。**エラーが出ずに静かに壊れる** |
-| 長い記法（`type: bind`） | `BOOK_ROOT` ・ バックアップ保存先 | **起動時にエラーで止まる**（気づけるが起動できない） |
+| 長い記法（`type: bind`） | バックアップ保存先 | **起動時にエラーで止まる**（気づけるが起動できない） |
 
 📌 `certs/extra-ca.pem` は「TLS を傍受するウイルス対策ソフト（Avast の Mail Shield 等）のルート証明書」を置くための枠です。**該当しない環境では空ファイルのままで構いません**。
 
 ✅ **確認**:
 
 ```bash
-ls -ld logs certs/extra-ca.pem /mnt/d/dashboard-data/books /mnt/d/dashboard-data/backups/db
-# 4つとも存在し、所有者が root になっていないこと
+ls -ld logs certs/extra-ca.pem /mnt/d/dashboard-data/backups/db
+# 3つとも存在し、所有者が root になっていないこと
 ```
 
 ---
@@ -485,7 +483,7 @@ pnpm drizzle-kit push
 
 ```bash
 docker compose exec postgres psql -U dashboard -d dashboard -c '\dt' | head
-# users / tasks / books / feed_items ... などが並ぶ
+# users / tasks / events ... などが並ぶ
 ```
 
 🔴 **既知の癖**: drizzle-kit は **CHECK 制約を取りこぼすこと**があります。初回構築ではまず問題になりませんが、実行時に `23514` エラーが出たら、CHECK 制約を手動の `ALTER TABLE` で付け直す必要があります（手順は※本書には未収録）。
@@ -601,7 +599,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f web work
 ```
 
 🔴 **つまずいたら**:
-- **`bind source path does not exist`** → Step 9 をやり直す（`BOOK_ROOT` かバックアップ保存先が無い）。
+- **`bind source path does not exist`** → Step 9 をやり直す（バックアップ保存先が無い）。
 - **web が healthy にならない** → `logs web` を見る。`.env` の未設定が原因なら起動時ではなく機能を触った時に出ます。
 - **443 が使えない** → Windows 側で 443 を使う別プロセス（IIS・別の Docker）が居ないか確認。
 
@@ -684,7 +682,6 @@ pnpm tsx src/db/check-env.ts
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` | postgres コンテナ | 所有者ロール。`dashboard` から変えない |
 | `APP_DB_PASSWORD` | postgres / web / worker | 実行用ロール `dashboard_app`。**所有者とは別のパスワード**にする |
 | `DATABASE_URL` | **ホスト実行のみ**（drizzle-kit・seed・check スクリプト） | `dashboard@localhost:5432`。コンテナ内は compose が `dashboard_app@postgres:5432` を注入するので**この値は使われない** |
-| `BOOK_ROOT` | worker（＋ホスト） | 本番では `/books` にマウント。**実在するパスにする** |
 | `PUBLIC_ORIGIN` | web | 絶対 URL と OAuth リダイレクトの生成元 |
 | `TRUSTED_IP_HEADER` | web | 監査ログの IP をこのヘッダからのみ取る。**未設定なら記録しない** |
 | `HSTS_ENABLED` | web | **ローカルでは必ず `false`**。ビルド時に焼き込まれるので、変更には再ビルドが要る |
@@ -728,13 +725,12 @@ pnpm tsx src/db/check-env.ts
 | ブラウザが証明書を警告する | Windows 側で `mkcert -install` を実行していない。または証明書を作り直したのに `certs/` へコピーしていない |
 | ログインした直後にログアウトされる | HTTP で開いている。`__Host-` クッキーは HTTPS でしか送られない |
 | `invalid compose project` | 本番の compose を**1ファイル指定**で打っている。**必ず `-f docker-compose.yml -f docker-compose.prod.yml` の2つ** |
-| `bind source path does not exist` | Step 9 のディレクトリ未作成（`BOOK_ROOT` か バックアップ保存先） |
+| `bind source path does not exist` | Step 9 のディレクトリ未作成（バックアップ保存先） |
 | ログファイルが作られない・権限エラー | `./logs` を Docker が root 所有で作ってしまった。`sudo rm -rf logs && mkdir logs` で作り直す |
 | `.env` を直したのに効かない（本番） | `restart` では新しい env が入らない。**`up -d web worker`** で作り直す。そもそも `docker-compose.prod.yml` に**列挙されているか**を確認 |
 | `Caddyfile` を直したのに効かない | `up -d --build` はバインドマウントの中身を見ない。**`restart proxy`** |
 | ジョブが `worker restart (stale)` で失敗している | worker が落ちた／再起動した。dev の `pnpm worker` は tsx watch なので**ファイル保存でも再起動**します |
 | 実行時に `23514`（CHECK 違反） | drizzle-kit が CHECK の差分を取りこぼした。手動の `ALTER TABLE` で付け直す（手順は※本書には未収録） |
-| 書籍が `downloading` のまま止まる | worker 起動時の `reconcileOrphanBooks()` が回収します。worker を起動し直す |
 
 ## D. 参考リンク
 

@@ -31,6 +31,7 @@
 
 - 断りがなければ **WSL の Ubuntu 端末**で、**`~/dev/dashboard` に居る状態**で実行します。
 - **ブラウザは Windows 側**を使います（WSL2 は `localhost` を Windows と共有するので、そのまま繋がります）。
+- 📌 **知らない言葉が出てきたら、末尾の「付録 E. 用語ミニ辞典」**を見てください（コンテナ・ボリューム・ロールなど、この文書に出てくる用語だけをまとめてあります）。
 
 ### 進捗チェックリスト（本編）
 
@@ -114,16 +115,18 @@
 
 **目的**: Linux 環境を用意する。 **所要**: 10〜20分（再起動あり）
 
-前提として、BIOS で仮想化（VT-x / AMD-V）が有効になっている必要があります。
+**WSL2 とは**: Windows の中で Linux を動かす仕組みです。この先のコマンドはほとんどこの Linux（Ubuntu）の中で打ちます。
+
+前提として、BIOS で仮想化（VT-x / AMD-V）が有効になっている必要があります。**確認方法**＝タスクマネージャー → パフォーマンス → CPU → **「仮想化: 有効」**。無効なら PC の BIOS/UEFI 設定で有効にします。
 
 ```powershell
 # 【PowerShell（Windows・管理者で開く）】
-wsl --install -d Ubuntu-24.04
-wsl --set-default-version 2
-wsl --update
+wsl --install -d Ubuntu-24.04     # Ubuntu 24.04 を入れる（再起動を求められます）
+wsl --set-default-version 2       # 既定を WSL2 にする（1 と 2 があり、2 を使います）
+wsl --update                      # WSL 本体を最新にする
 ```
 
-再起動後、Ubuntu が起動して初期ユーザー名とパスワードを聞かれるので設定します。続けて更新します。
+再起動後、Ubuntu のウィンドウが開いて**初期ユーザー名とパスワード**を聞かれます。ここで決めるのは **Linux 側のアカウント**で、Windows のログインとは別物です（`sudo` のときに使うので忘れないように）。続けて更新します。
 
 ```bash
 # 【WSL】
@@ -160,6 +163,10 @@ docker compose version
 **目的**: アプリを動かす言語ランタイム。 **所要**: 5分
 
 Node は **24 系（Active LTS）** を使います。バージョン切り替えのため nvm 経由で入れます。
+
+- **nvm** … Node の版を出し入れ・切り替えする道具。将来べつの版が要るときに困らないので、直接入れずにこれを使います。
+- **corepack** … Node に同梱されている仕組みで、**プロジェクトが指定した版の pnpm を自動で用意**してくれます（自分で pnpm を入れる必要がありません）。
+- **pnpm** … パッケージ（外部の部品）を入れる道具。npm の仲間です。
 
 ```bash
 # 【WSL】ネットのスクリプトは直接 | bash せず、落として中身を見てから実行する
@@ -198,7 +205,13 @@ git config --global init.defaultBranch main
 git config --global core.autocrlf input      # WSL 側では改行を変換しない
 ```
 
-GitHub CLI（`gh`）は**公式 apt リポジトリ**から入れます（snap 版は避ける）。手順は公式に従ってください → <https://github.com/cli/cli/blob/trunk/docs/install_linux.md>
+📌 **`user.name` / `user.email` はコミットに記録される名札**です（認証には使いません）。
+
+📌 **「GitHub no-reply アドレス」とは**: 本当のメールアドレスを公開せずに済むよう、GitHub が配る転送用アドレスです（`12345678+ユーザー名@users.noreply.github.com` の形）。**GitHub → Settings → Emails → 「Keep my email addresses private」**にチェックを入れると、その欄に表示されます。**ここに本物のアドレスを書くと、コミットと一緒に公開されます。**
+
+📌 **`core.autocrlf input` とは**: Windows と Linux では改行コードが違います。**WSL 側では変換しない**設定にして、無関係な差分がコミットに混ざるのを防ぎます。
+
+GitHub CLI（`gh`）は、GitHub をコマンドから操作する道具です。**公式 apt リポジトリ**から入れます（`apt` は Ubuntu のインストーラ。snap 版は避けます）。鍵の登録を含む数行なので、**手順は公式ページのコピー&ペースト**が確実です → <https://github.com/cli/cli/blob/trunk/docs/install_linux.md>
 
 ```bash
 # 【WSL】
@@ -436,6 +449,8 @@ Windows のブラウザで **<https://localhost:3000>**（今度は **https**）
 
 **目的**: パスワードや接続先を設定する。 **所要**: 10分
 
+📌 **`.env` とは**: `キー=値` を1行ずつ書いた設定ファイルです。パスワードなど**コードに書きたくない値**をここに置き、アプリは起動時にこれを読みます。**Git には入れません**（`.gitignore` 済み）。`.env.example` は「何を書くか」の見本で、これをコピーして自分の値で埋めます。
+
 ```bash
 # 【WSL】
 cd ~/dev/dashboard
@@ -456,6 +471,10 @@ code .env          # または nano .env
 | `TRUSTED_IP_HEADER` | 監査ログに記録する IP をどのヘッダから取るか。ローカルは Caddy と対の値 | `x-real-ip` |
 | `HSTS_ENABLED` | **`false` のまま**（下記） | `false` |
 | `INITIAL_USERNAME` | 最初のユーザー名（ログイン ID）。秘密ではないので `.env` に置いてよい | `admin@example.com` |
+
+📌 **DB の利用者（ロール）が2つあるのはなぜか**: `dashboard` は**テーブルを作る側**（所有者）、`dashboard_app` は**アプリが日常的に使う側**で、こちらはテーブルを作り替える権限を持ちません。**万一アプリ側から悪用されても被害を小さくする**ための分け方です。パスワードを別にするのもそのためです。
+
+📌 **`DATABASE_URL` の読み方**: `postgresql://ユーザー名:パスワード@ホスト:ポート/DB名` という形の1本の文字列です。上の表の値と食い違うと DB に繋がりません（よくある失敗の筆頭です）。
 
 🔴 **`HSTS_ENABLED` は必ず `false`**: `localhost` に HSTS を打つと、**同じ PC の他プロジェクトの `http://localhost:xxxx` まで HTTPS 強制に巻き込まれ**、ブラウザ側に長期間残ります。
 
@@ -512,11 +531,13 @@ dev では **DB だけコンテナ**、アプリと worker はホストで直接
 ```bash
 # 【WSL】
 cd ~/dev/dashboard
-docker compose up -d postgres
-docker compose ps
+docker compose up -d postgres     # -d = バックグラウンドで起動（端末が空く）
+docker compose ps                 # いま動いているコンテナの一覧
 ```
 
 ✅ **確認**: `dashboard_postgres` の STATUS が **`Up ... (healthy)`** になること（`starting` の間は10〜20秒待つ）。
+
+📌 **`healthy` とは**: 「起動した」だけでなく、**定期的な問い合わせに DB が答えられている**状態です。`starting` の間に次へ進むと接続エラーになります。
 
 📌 初回起動時に `db/init/01-app-role.sh` が自動実行され、実行用ロール `dashboard_app` と pg-boss 用スキーマが作られます。
 📌 Postgres は `127.0.0.1:5432` にのみ公開されます（LAN からは見えません）。
@@ -531,6 +552,8 @@ docker compose ps
 pnpm install --frozen-lockfile
 ```
 
+📌 **何をしているか**: アプリが使う外部の部品を、`node_modules/` の下にダウンロードします。**`--frozen-lockfile` は「`pnpm-lock.yaml` に記録された版のとおりに入れる」指定**です。勝手に新しい版へ上がらないので、**開発した人とまったく同じ組み合わせ**で動かせます（記録と食い違うときは、黙って直さずエラーで止まります）。
+
 ✅ **確認**: `Done in ...` で終わり、`node_modules/` ができること。
 
 📌 初回は corepack が pnpm 11.5.2 のダウンロード可否を聞いてくることがあります（`Do you want to continue?`）。`package.json` で固定した版なので **Y で進めて構いません**。
@@ -539,7 +562,12 @@ pnpm install --frozen-lockfile
 
 ### 10-3. DB 拡張 → スキーマ反映
 
-🔴 **順番が重要**: `pg_trgm` 拡張（メール全文検索の索引が前提にする）を**先に**作ってから、テーブルを作ります。
+ここでは**空っぽの DB に、アプリが使うテーブルを用意**します。
+
+- **拡張（extension）** … Postgres に機能を足す部品。`pg_trgm` は「あいまいな文字検索」を速くするためのものです。
+- **スキーマ反映（`drizzle-kit push`）** … **コードに書かれたテーブル定義を、そのまま DB に作る**操作です。手で `CREATE TABLE` を書く代わりになります。
+
+🔴 **順番が重要**: `pg_trgm` 拡張を**先に**作ってから、テーブルを作ります（テーブル側の索引がこの拡張を前提にしているためです）。
 
 ```bash
 # 【WSL】① 拡張（先）
@@ -549,6 +577,8 @@ docker compose exec postgres psql -U dashboard -d dashboard \
 # ② スキーマ反映（後）
 pnpm drizzle-kit push
 ```
+
+📌 **コマンドの読み方**: `docker compose exec postgres …` は「`postgres` コンテナの中でこれを実行」。`psql` は Postgres の操作コマンドで、**`-U` が使うロール**、**`-d` が対象の DB**、**`-c` がその場で実行する SQL** です。
 
 ✅ **確認**: `push` が `[✓] Changes applied` で終わること。
 
@@ -574,6 +604,8 @@ docker compose exec postgres bash /docker-entrypoint-initdb.d/01-app-role.sh
 
 **登録画面はありません**（単一ユーザー運用）。ここで作るアカウントでログインします。
 
+📌 **seed（シード）とは**: 「種」の意味で、**最初のデータを DB に入れる**ことです。ここでは Step 8 の `INITIAL_USERNAME` と、次で入力するパスワードから利用者を1人作ります。
+
 ```bash
 # 【WSL】🔴 パスワードは画面に表示されず、履歴にも .env にも残らない
 read -rs INITIAL_PASSWORD; export INITIAL_PASSWORD; echo
@@ -587,7 +619,7 @@ unset INITIAL_PASSWORD
 
 ### 10-6. 起動して入ってみる
 
-**端末を3つ**使います（VSCode の分割ターミナルが便利です）。
+**端末を2つ**使います（VSCode の分割ターミナルが便利です）。どちらも**開きっぱなし**にします（閉じると止まります）。もう1つ空けておくと、確認コマンドを打つのに便利です。
 
 ```bash
 # 【WSL 端末①】Next.js（HTTPS）
@@ -630,6 +662,8 @@ Windows のブラウザで **<https://localhost:3000>** を開きます。
 2回目以降（すでに運用している環境を更新する場合）は、**走行中のジョブが無いこと**も確認してください（手順は※本書には未収録）。初回構築では不要です。
 
 ### 11-2. ビルドして起動
+
+📌 **なぜ2つ指定するのか**: `docker-compose.yml` が**共通の土台**、`docker-compose.prod.yml` が**本番用の上書き**です。2つを重ねて1つの構成にします（同じ項目は後のファイルが勝ちます）。
 
 🔴 **compose ファイルは必ず2つ指定**します。`-f docker-compose.prod.yml` 単独では `postgres` が解決できず `invalid compose project` で落ちます。
 
@@ -723,12 +757,14 @@ pnpm worker         # 端末②
 
 ```bash
 # 【WSL】静的検査（コードを触っていなくても通ることの確認）
-pnpm lint
-pnpm tsc --noEmit
+pnpm lint          # 書き方の検査（使っていない変数・危ない書き方など）
+pnpm tsc --noEmit  # 型の検査。--noEmit ＝ 検査だけしてファイルは作らない
 
 # env まわりの純ロジック検証
 pnpm tsx src/db/check-env.ts
 ```
+
+📌 **「静的」とは、アプリを動かさずにコードだけを調べる**という意味です。ここが緑なら、少なくとも「設定を取り違えたまま気づいていない」状態ではありません。
 
 - [ ] `https://localhost:3000`（dev）でログインできる
 - [ ] `https://localhost`（本番）でログインできる
@@ -810,3 +846,25 @@ pnpm tsx src/db/check-env.ts
 - OSV-Scanner GitHub Action: <https://google.github.io/osv-scanner/github-action/>
 - Node.js リリース計画: <https://github.com/nodejs/Release>
 - GitHub CLI（Linux インストール）: <https://github.com/cli/cli/blob/trunk/docs/install_linux.md>
+
+## E. 用語ミニ辞典（はじめての人向け）
+
+この文書に出てくる言葉だけを、**この文書での意味**にしぼって並べています。
+
+| 用語 | ひとことで言うと |
+|---|---|
+| **ホスト** | コンテナの外側、つまり WSL（Ubuntu）そのもの。「ホストで直接動かす」＝コンテナを使わずに動かす |
+| **イメージ / コンテナ** | イメージ＝設計図、コンテナ＝それを動かした実体。設計図から何個でも作れる |
+| **compose** | 複数のコンテナの組み合わせをファイルに書いて、まとめて起動する道具（`docker compose …`） |
+| **ボリューム** | Docker が管理する保存領域。**コンテナを作り直しても中身は残る**（DB の実体はここ。`down -v` で消える） |
+| **バインドマウント** | ホストの実在フォルダを、そのままコンテナの中に見せる渡し方（`logs/` やバックアップ先がこれ） |
+| **ポート** | 通信の窓口番号。`3000`＝dev のアプリ、`443`＝HTTPS、`5432`＝Postgres |
+| **リバースプロキシ** | 前に立って受け取り、後ろのアプリへ渡す係。ここでは Caddy（`proxy`） |
+| **TLS を終端する** | 暗号（HTTPS）を解いて中身を取り出す場所のこと。dev は Next.js 自身、本番は Caddy |
+| **CA（認証局）/ 証明書** | 「この証明書は本物」と保証する立場が CA。mkcert は**自分専用の CA** を作り、Windows に信頼させる |
+| **ロール** | Postgres での利用者アカウント。所有者（`dashboard`）と実行用（`dashboard_app`）を分けている |
+| **スキーマ反映 / マイグレーション** | コードに書いたテーブル定義を、実際の DB に作る・変えること |
+| **ジョブ / ワーカー** | ジョブ＝時間のかかる作業の依頼、ワーカー（`worker`）＝それを取り出して実行する常駐プロセス |
+| **環境変数 / `.env`** | プログラムの外から渡す設定値。`.env` はそれを並べたファイル |
+| **静的検査（lint / 型検査）** | アプリを動かさずに、コードの書き方や型の食い違いを調べること |
+| **冪等（べきとう）** | 何度実行しても結果が同じこと。「冪等なので再実行して安全」はこの意味 |

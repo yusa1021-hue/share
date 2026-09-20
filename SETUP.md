@@ -243,14 +243,85 @@ gh repo create <GitHubアカウント名>/dashboard --private --source=. --remot
 
 **目的**: 編集環境。アプリの動作自体には不要なので、急ぐなら後回しで構いません。 **所要**: 10分
 
-順番は **CLI（本体）が先、拡張が後**です。
+🔴 **順番が大事です。CLI（本体）を先、VSCode 拡張を後**に入れます。拡張は**自分で AI を持たず、WSL 側に入れた `claude` コマンドを呼び出す**作りだからです。先に拡張だけ入れても動きません。
 
-1. **Windows** に VSCode をインストールし、拡張 **WSL**（`ms-vscode-remote.remote-wsl`）を入れる。
-2. WSL 端末で `code .` → WSL に接続したウィンドウが開く。
-3. **Claude Code 本体（WSL 側）**: `claude.ai/install.sh` をファイルに落とし、中身を確認してから実行。`claude` を起動して Claude.ai アカウントでログイン（認証情報は `~/.claude/.credentials.json`）。
-4. **Claude Code 拡張（VSCode・WSL ウィンドウ側）**: `anthropic.claude-code`。CLI と同じ認証を共有します。
+### 6-1. VSCode と「WSL」拡張（Windows 側）
 
-✅ **確認**: WSL 端末で `claude doctor` がエラーなく完了すること。
+1. **Windows** に VSCode をインストールする。
+2. VSCode の拡張ビュー（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>）で **`WSL`**（発行元 Microsoft・ID は `ms-vscode-remote.remote-wsl`）を検索して**インストール**。
+3. **WSL の端末**で、開きたいフォルダへ移動して `code .` と打つ。VSCode が「WSL に接続したウィンドウ」で開きます。
+
+✅ **確認**: VSCode の**左下**に緑色で **`WSL: Ubuntu-24.04`** と表示されていること。ここが空欄なら、そのウィンドウは Windows 側です（6-4 で効いてきます）。
+
+### 6-2. Claude Code 本体を入れる（WSL 側）
+
+**ネットのスクリプトを `| bash` で直接実行しない**方針は Step 3 と同じです。落として中身を見てから実行します。
+
+```bash
+# 【WSL】
+curl -fsSL -o ~/claude-install.sh https://claude.ai/install.sh
+less ~/claude-install.sh       # ざっと確認して q で抜ける
+bash ~/claude-install.sh
+exec $SHELL -l                 # PATH を読み込み直す
+```
+
+📌 **何が入るのか**:
+
+- インストール先は **`~/.local/bin/claude`**。これは実体（`~/.local/share/claude/versions/<版>`）への**ショートカット**で、更新すると差し替わります。
+- **npm は使いません**（Node の有無と無関係に動く単体の実行ファイルです）。`sudo` も不要で、入るのは自分のホームの下だけです。
+- 更新は `claude update`、状態の確認は `claude doctor` です。
+
+✅ **確認**:
+
+```bash
+command -v claude      # → /home/<ユーザー名>/.local/bin/claude
+claude --version       # → バージョンが出る
+```
+
+🔴 **つまずいたら**: `claude: command not found` は、**`~/.local/bin` に PATH が通っていない**のが大半です。端末を開き直すか、`~/.bashrc` の末尾に次の1行を足して `exec $SHELL -l` してください。
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 6-3. ログインする（WSL 側）
+
+```bash
+# 【WSL】
+claude
+```
+
+- 初回はアカウントの種類（Claude の契約プラン／API）を聞かれるので、**自分が契約している方**を選びます。
+- **ブラウザが自動で開かないことがあります**（WSL ではよくあります）。その場合は表示された URL を **Windows のブラウザに手で貼って**ください（Step 4 の `gh auth login` と同じ対処です）。
+- 認証情報は **`~/.claude/.credentials.json`** に保存されます。🔴 **このファイルは共有・コミットしない**（鍵そのものです）。
+- 終了は **`/exit`** または <kbd>Ctrl</kbd>+<kbd>D</kbd>。
+
+✅ **確認**: `claude doctor` がエラーなく完了すること。
+
+### 6-4. VSCode 拡張を入れる（🔴 WSL 側のウィンドウで）
+
+🔴 **ここが一番の落とし穴です。拡張は「WSL 側」に入れます。** VSCode の拡張は、Windows 側と WSL 側で**別々に入る**仕組みです。Windows 側にだけ入れても、WSL にある `claude` コマンドを呼べません。
+
+1. `code .` で開いた **左下が `WSL: Ubuntu-24.04` のウィンドウ**で、拡張ビュー（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>）を開く。
+2. **`Claude Code`**（発行元 Anthropic・ID は `anthropic.claude-code`）を検索する。
+3. ボタンが **「WSL: Ubuntu-24.04 にインストール」** になっていることを確かめて押す。**ただの「インストール」なら、そのウィンドウは Windows 側**なので、いったん `code .` で開き直してください。
+
+端末から入れることもできます（こちらなら入れ先を間違えません）。
+
+```bash
+# 【WSL】
+code --install-extension anthropic.claude-code
+```
+
+✅ **確認**:
+
+```bash
+# 【WSL】WSL 側に入っていれば、ここに出る
+ls ~/.vscode-server/extensions | grep claude
+# → anthropic.claude-code-<版>
+```
+
+📌 **ログインし直す必要はありません**。拡張は 6-3 でログインした CLI の認証をそのまま使います。
 
 ---
 

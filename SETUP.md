@@ -8,6 +8,10 @@
 > - **Step 5 以降の多くはアプリのリポジトリ（ソースコード）が手元にある前提**です。リポジトリは同梱していないので、その部分は「実際のアプリはこういう構成・順番で組まれている」という**読み物**として読んでください。どこまで手元で実行できるかは下の「0.」にまとめています。
 > - 文中で **「※本書には未収録」** と付いている文書・手順は同梱していません（読み飛ばして大丈夫です）。
 
+> 📌 **図の見方（Mermaid 記法）**
+> 図は Mermaid という記法で書いてあります。**GitHub 上ではそのまま図として表示**されます。
+> **VSCode でプレビューする場合**は、拡張 **Markdown Preview Mermaid Support**（`bierner.markdown-mermaid`）を入れてから <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> を押してください（拡張の入れ方は Step 6-4 と同じ要領です）。
+
 ---
 
 ## 0. この文書の読み方（最初にここだけ読む）
@@ -57,27 +61,46 @@
 
 同じソースコードを、**2通りの動かし方**で使います。**アプリのコードは両者で完全に同一**で、違うのは env と前段だけです。
 
-```
-■ dev 構成（開発中はこれ。Step 10 で作る）
-   ┌─ Windows ─────────────────────────────┐
-   │  ブラウザ  →  https://localhost:3000    │
-   └───────────────┬───────────────────────┘
-   ┌─ WSL2 (Ubuntu) ────────────────────────┐
-   │  pnpm dev:https   … Next.js（HTTPS 直）  │  ← ホストで直接動かす（保存で即反映）
-   │  pnpm worker      … ジョブ実行           │  ← ホストで直接動かす
-   │            ↓ localhost:5432             │
-   │  [Docker] postgres だけコンテナ          │
-   └────────────────────────────────────────┘
+**■ dev 構成（開発中はこれ。Step 10 で作る）** … アプリと worker は**ホストで直接**動かし、DB だけコンテナ。
 
-■ 本番構成（ローカル専用。Step 11 で作る）
-   ┌─ Windows ─────────────────────────────┐
-   │  ブラウザ  →  https://localhost（:443）  │
-   └───────────────┬───────────────────────┘
-   ┌─ WSL2 / Docker ────────────────────────┐
-   │  proxy(Caddy) → web → postgres          │
-   │                 worker ┘                │
-   │                 backup（毎日 04:00 JST） │
-   └────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph WIN["Windows"]
+    B["ブラウザ<br/>https://localhost:3000"]
+  end
+  subgraph HOST["WSL2（Ubuntu）… ホストで直接動かす"]
+    N["pnpm dev:https<br/>Next.js が自分で HTTPS を終端<br/>保存すると即反映"]
+    K["pnpm worker<br/>ジョブ実行"]
+  end
+  subgraph DKR["Docker"]
+    DB[("postgres<br/>localhost:5432")]
+  end
+  B --> N
+  N -->|"dashboard（所有者ロール）"| DB
+  K -->|"dashboard"| DB
+```
+
+**■ 本番構成（ローカル専用。Step 11 で作る）** … **全部コンテナ**。前段に Caddy が立ち、バックアップも回ります。
+
+```mermaid
+flowchart TB
+  subgraph WIN2["Windows"]
+    B2["ブラウザ<br/>https://localhost（443）"]
+  end
+  subgraph DKR2["WSL2 / Docker … 全部コンテナ"]
+    P["proxy（Caddy）<br/>HTTPS を終端"]
+    W["web<br/>Next.js 本番ビルド<br/>コンテナ内 3000 番・外へは出さない"]
+    K2["worker"]
+    DB2[("postgres<br/>dev と同じコンテナ・同じデータ")]
+    BK["backup<br/>毎日 04:00 JST"]
+  end
+  DRV[("D ドライブ<br/>*.dump")]
+  B2 --> P
+  P -->|"http（内部だけ）"| W
+  W -->|"dashboard_app（実行用ロール）"| DB2
+  K2 -->|"dashboard_app"| DB2
+  DB2 -->|"pg_dump"| BK
+  BK --> DRV
 ```
 
 | | dev 構成 | 本番構成 |
@@ -90,6 +113,25 @@
 | バックアップ | 手動（`bash db/backup.sh`） | **自動（毎日 04:00 JST）** |
 
 🔴 **dev の `pnpm worker` と本番の worker コンテナを同時に動かさない**（同じジョブを2重に取り合います）。片方を止めてからもう片方を起動してください。
+
+### 設定（`.env`）はどこへ届くのか
+
+**同じ `.env`（Step 8 で作る1ファイル）を使いますが、届き方が2通りあります。**
+
+```mermaid
+flowchart TB
+  ENV[".env<br/>Step 8 で作る1ファイル"]
+  ENV -->|"dev：プロセスが直接読む"| HOSTP["pnpm dev:https<br/>pnpm worker<br/>drizzle-kit・seed など"]
+  ENV -->|"本番：compose が読み取る"| CMP["docker compose<br/>2ファイルを重ねて起動"]
+  CMP -->|"🔴 列挙した分だけ渡る"| W3["web"]
+  CMP -->|"🔴 列挙した分だけ渡る"| K3["worker"]
+  CMP --> PG3["postgres"]
+  CMP --> BK3["backup"]
+```
+
+- 🔴 **本番構成では「`.env` に書いた」だけでは足りません。** compose 側に**そのキーを列挙**して初めてコンテナに入ります。書き忘れると、静的検査は緑のまま**実行時に値が空**になります（付録 A の最後を参照）。
+- 📌 **`DATABASE_URL` はホストで動かすとき専用**です。コンテナの中へは、compose が実行用ロール（`dashboard_app`）の接続情報を渡します。
+- 📌 **`web` と `worker` の両方で使う値は、両方に渡します**（片方だけだと、その経路でだけ静かに失敗します）。
 
 ### 置き場所の方針
 

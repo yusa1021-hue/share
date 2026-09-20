@@ -14,20 +14,27 @@
 
 ## 1. 全体像（本番構成 ＝ `SETUP.md` の Step 11）
 
+**上から下へ「外 → 内」の順**に5つの層で並べてあります。**外から触れるのは ② だけ**です。
+
 ```mermaid
 flowchart TB
-  subgraph WIN["Windows"]
+  subgraph L1["① 利用者　〈Windows〉"]
     B["ブラウザ"]
   end
-  subgraph WSL["WSL2 / Docker"]
-    P["proxy（Caddy）<br/>TLS を終端する"]
+  subgraph L2["② 入口　〈外から触れるのはここだけ〉"]
+    P["proxy（Caddy）<br/>HTTPS を受けて解く"]
+  end
+  subgraph L3["③ アプリ"]
     W["web<br/>画面・API・ログイン<br/>コンテナ内 3000 番"]
     K["worker<br/>時間のかかる処理を実行"]
-    DB[("postgres<br/>データ本体 ＋ ジョブの表<br/>127.0.0.1:5432 のみ公開")]
-    BK["backup<br/>毎日 04:00 JST"]
   end
-  DRV[("D ドライブ<br/>*.dump")]
-  EXT["外部サービス<br/>メール・翻訳（任意機能のときだけ）"]
+  subgraph L4["④ データ"]
+    DB[("postgres<br/>データ本体 ＋ ジョブの表<br/>127.0.0.1:5432 のみ公開")]
+  end
+  subgraph L5["⑤ 保存　〈PC が壊れても残す〉"]
+    BK["backup<br/>毎日 04:00 JST"]
+    DRV[("D ドライブ<br/>*.dump")]
+  end
 
   B -->|"https://localhost （443）"| P
   P -->|"http（内部だけ）"| W
@@ -35,9 +42,11 @@ flowchart TB
   K -->|"dashboard_app"| DB
   DB -->|"pg_dump"| BK
   BK --> DRV
-  W -.-> EXT
-  K -.-> EXT
 ```
+
+📌 **②〜⑤は、すべて WSL2 の Docker の中**で動いています（① の ブラウザだけが Windows 側です）。
+📌 **③ の `web` と `worker` は、同じ層にいる仲間**です。役割が違うだけで、どちらも ④ の DB を使います。
+📌 メール・翻訳などの**任意機能を使うときだけ**、③ から外部サービス（メール事業者・Azure）へ出ていきます。常時の通信ではないので、この図からは省いています。
 
 **読み方**:
 

@@ -4,6 +4,7 @@
 > - `SETUP.md`（環境構築手順）の**付録**です。手順を読む前／読みながら、「何と何がどう繋がっているのか」を見るための図をまとめました。
 > - **`SETUP.md` に書かれている範囲だけ**を図にしています（アプリのソースコードは同梱していないため、中の作りには踏み込みません）。
 > - 図の中の箱は、**そのまま `docker compose ps` に出てくるサービス名**です。手順の中で名前を見かけたら、この図に戻ってきてください。
+> - **dev 構成と本番構成の違い、`.env` の届き方は `SETUP.md` の「1. 全体像」**にあります（同じ図を2か所に置くと、片方だけ古くなるため、この文書では繰り返しません）。
 
 > 📌 **図の見方（Mermaid 記法）**
 > 図は Mermaid という記法で書いてあります。**GitHub 上ではそのまま図として表示**されます。
@@ -58,38 +59,11 @@ flowchart TB
 | `postgres` | データの本体。ジョブの表も持つ | いいえ（PC 内からのみ） |
 | `backup` | 1日1回 DB を書き出す | いいえ |
 
-🔴 **`web` と `worker` は、どちらも同じ `postgres` を見ます。** この2つは直接は会話せず、**DB を挟んで**やり取りします（→ 4.）。
+🔴 **`web` と `worker` は、どちらも同じ `postgres` を見ます。** この2つは直接は会話せず、**DB を挟んで**やり取りします（→ 3.）。
 
 ---
 
-## 2. 同じコードの、2通りの動かし方
-
-```mermaid
-flowchart TB
-  subgraph DEV["dev 構成（Step 10）… 開発中はこれ"]
-    direction LR
-    B1["ブラウザ"] -->|"https://localhost:3000"| N1["pnpm dev:https<br/>ホストで直接動かす<br/>保存すると即反映"]
-    N1 -->|"dashboard"| DB1[("postgres<br/>これだけ Docker")]
-    K1["pnpm worker<br/>ホストで直接動かす"] -->|"dashboard"| DB1
-  end
-
-  subgraph PRD["本番構成（Step 11）… 全部コンテナ"]
-    direction LR
-    B2["ブラウザ"] -->|"https://localhost"| P2["proxy"]
-    P2 --> W2["web"]
-    W2 -->|"dashboard_app"| DB2[("postgres")]
-    K2["worker"] -->|"dashboard_app"| DB2
-    DB2 --> BK2["backup"]
-  end
-```
-
-- **アプリのコードは両方で同じ**です。違うのは「誰が HTTPS を終端するか」「どのロールで DB に繋ぐか」「コード変更の反映方法」だけです。
-- **`postgres` は両方で同じものを使い回します**（dev で入れたデータが本番構成でもそのまま見えます）。
-- 🔴 **dev の `pnpm worker` と本番の `worker` を同時に動かさない**。同じジョブを2つで取り合います。
-
----
-
-## 3. ログインの流れ（なぜ HTTPS が必須なのか）
+## 2. ログインの流れ（なぜ HTTPS が必須なのか）
 
 ```mermaid
 sequenceDiagram
@@ -114,7 +88,7 @@ sequenceDiagram
 
 ---
 
-## 4. ジョブの流れ（`web` と `worker` の分担）
+## 3. ジョブの流れ（`web` と `worker` の分担）
 
 ```mermaid
 flowchart LR
@@ -130,7 +104,7 @@ flowchart LR
 
 ---
 
-## 5. データの置き場所（消えると困るものの所在）
+## 4. データの置き場所（消えると困るものの所在）
 
 ```mermaid
 flowchart LR
@@ -158,26 +132,7 @@ flowchart LR
 
 ---
 
-## 6. 設定（`.env`）はどうやってコンテナに届くか
-
-```mermaid
-flowchart TB
-  ENV[".env（1ファイル）"]
-  ENV -->|"dev：プロセスが直接読む"| HOST["pnpm dev:https<br/>pnpm worker"]
-  ENV -->|"本番：compose を経由する"| CMP["docker compose"]
-  CMP -->|"🔴 列挙したものだけ"| W["web"]
-  CMP -->|"🔴 列挙したものだけ"| K["worker"]
-  CMP --> PG["postgres"]
-  CMP --> BK["backup"]
-```
-
-- 🔴 **「`.env` に書いたのに効かない」の多くはここ**です。本番構成では、`.env` に書いただけでは足りず、**compose 側にも書き足す**必要があります。
-- 変更を反映するときは `restart` ではなく**作り直し**（`up -d web worker`）。
-- 🔴 **`web` と `worker` の両方で使う値は、両方に同じ値を渡す**（メールの暗号鍵・翻訳のキーなど）。片方だけだと、その経路でだけ静かに失敗します。
-
----
-
-## 7. ログの流れ（どこを見れば分かるか）
+## 5. ログの流れ（どこを見れば分かるか）
 
 ```mermaid
 flowchart LR
@@ -198,7 +153,7 @@ flowchart LR
 
 ---
 
-## 8. まとめ（1枚だけ覚えるなら）
+## 6. まとめ（1枚だけ覚えるなら）
 
 ```mermaid
 flowchart LR

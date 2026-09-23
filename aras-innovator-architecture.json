@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "type": "architecture",
+  "title": "Aras Innovator のシステム構成",
+  "description": "標準的なオンプレミス構成（Aras Innovator 2024 Release のインストールガイドにもとづく）",
+  "lang": "ja",
+  "nodes": [
+    { "id": "user", "kind": "person", "label": "利用者", "sublabel": "設計者・管理者", "col": 0, "row": 1 },
+    { "id": "client", "kind": "client", "label": "クライアント PC", "sublabel": "ブラウザ・CAD/Office 連携", "col": 1, "row": 1 },
+    { "id": "erp", "kind": "external", "label": "ERP など他システム", "sublabel": "外部連携", "col": 1, "row": 2 },
+    { "id": "vault", "kind": "datastore", "label": "Vault Server", "sublabel": "ファイル本体の保管（IIS）", "col": 2, "row": 0 },
+    { "id": "oauth", "kind": "security", "label": "OAuth Server", "sublabel": "認証・トークン発行（IIS）", "col": 3, "row": 0 },
+    { "id": "innovator", "kind": "service", "label": "Innovator Server", "sublabel": "業務ロジック・AML 処理（IIS）", "tag": "中核", "col": 2, "row": 1, "colSpan": 2 },
+    { "id": "sql", "kind": "datastore", "label": "SQL Server", "sublabel": "Innovator データベース", "col": 4, "row": 1 },
+    { "id": "agent", "kind": "service", "label": "Agent Service", "sublabel": "Windows サービス", "col": 2, "row": 2 },
+    { "id": "scheduler", "kind": "service", "label": "Scheduler Service", "sublabel": "メソッドの定期実行", "col": 3, "row": 2 },
+    { "id": "conversion", "kind": "service", "label": "Conversion Server", "sublabel": "変換タスクの実行（IIS）", "col": 2, "row": 3 },
+    { "id": "ad", "kind": "external", "label": "社内の認証基盤", "sublabel": "AD・OpenID Connect", "col": 5, "row": 0 },
+    { "id": "smtp", "kind": "external", "label": "SMTP サーバー", "sublabel": "通知メールの送信", "col": 5, "row": 2 }
+  ],
+  "groups": [
+    {
+      "id": "servers",
+      "label": "Aras サーバー（Windows Server）",
+      "contains": ["vault", "oauth", "innovator", "sql", "agent", "scheduler", "conversion"]
+    }
+  ],
+  "edges": [
+    { "from": "user", "to": "client", "primary": true },
+    { "from": "client", "to": "innovator", "label": "AML（HTTP/S）", "primary": true },
+    { "from": "innovator", "to": "sql", "label": "SQL", "primary": true },
+    { "from": "client", "to": "vault", "label": "ファイル送受信", "both": true },
+    { "from": "client", "to": "oauth", "label": "ログイン" },
+    { "from": "innovator", "to": "oauth", "label": "トークン確認" },
+    { "from": "oauth", "to": "ad", "label": "認証連携" },
+    { "from": "erp", "to": "innovator", "label": "REST API" },
+    { "from": "innovator", "to": "agent", "label": "タスク連携", "both": true },
+    { "from": "agent", "to": "conversion", "label": "変換の依頼" },
+    { "from": "scheduler", "to": "innovator", "label": "定期実行" },
+    { "from": "innovator", "to": "smtp", "label": "通知メール", "async": true }
+  ],
+  "notes": [
+    {
+      "title": "主な経路",
+      "kind": "service",
+      "items": [
+        "利用者はブラウザから Innovator Server に AML（XML 形式の要求）を HTTP(S) で送り、Innovator Server が SQL Server を読み書きする",
+        "独自の業務ロジック（サーバーメソッド：C#・VB.NET）も Innovator Server の中で動く",
+        "ファイル本体は DB に入れず Vault Server に保存し、クライアントが直接送受信する"
+      ]
+    },
+    {
+      "title": "ログイン",
+      "kind": "security",
+      "items": [
+        "OAuth Server（OAuth 2.0）は必須のコンポーネントで、ログインとトークンの発行を担う",
+        "Windows 認証や OpenID Connect による SSO は、追加の認証方式（フィーチャーライセンスが必要）"
+      ]
+    },
+    {
+      "title": "追加のサービス",
+      "kind": "service",
+      "items": [
+        "Agent Service は Conversion Server と Vault の複製を扱う Windows サービスで、Innovator Server からの要求を専用ポートで受ける",
+        "Conversion Server は変換タスクを実行する枠組み（例：CAD 図面を PDF にする CAD to PDF Converter）。本番では別サーバーに置くことが推奨されている",
+        "Scheduler Service（Aras Innovator Service）は、設定したメソッドを定期的に実行する",
+        "ライフサイクルの昇格やワークフローのタスクは、SMTP でメール通知される"
+      ]
+    },
+    {
+      "title": "動作環境（2024 Release）",
+      "items": [
+        "Windows Server 2012〜2022、IIS 8・10",
+        ".NET Framework 4.7.2 と ASP.NET Core Hosting Bundle 6.0",
+        "SQL Server 2012〜2022（レポートサーバーは任意）",
+        "各コンポーネントは1台にまとめても、別々のサーバーに分けてもよい"
+      ]
+    }
+  ]
+}

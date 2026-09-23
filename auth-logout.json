@@ -1,0 +1,77 @@
+{
+  "format": 1,
+  "type": "sequence",
+  "title": "③ ログアウトとセッションの失効",
+  "description": "サーバー側で sessions の行を消す＝Cookie が残っていても二度と使えない",
+  "lang": "ja",
+  "numbered": true,
+  "participants": [
+    { "id": "user", "kind": "person", "label": "利用者" },
+    { "id": "browser", "kind": "client", "label": "ブラウザ", "sublabel": "この端末" },
+    { "id": "next", "kind": "service", "label": "Next.js", "sublabel": "Server Action／src/auth" },
+    { "id": "db", "kind": "datastore", "label": "PostgreSQL", "sublabel": "sessions・auth_events" },
+    { "id": "other", "kind": "client", "label": "他の端末", "sublabel": "古い Cookie を持つ" }
+  ],
+  "steps": [
+    {
+      "block": "alt",
+      "label": "ログアウト",
+      "steps": [
+        { "from": "user", "to": "browser", "label": "ログアウトを押す" },
+        { "from": "browser", "to": "next", "label": "logoutAction()" },
+        { "from": "next", "to": "db", "label": "セッションを照合" },
+        { "from": "next", "to": "db", "label": "監査 logout" },
+        { "from": "next", "to": "db", "label": "この端末の行を削除" },
+        { "from": "next", "to": "browser", "label": "Cookie を消去＋/login へ", "reply": true }
+      ],
+      "else": [
+        {
+          "label": "他の端末をログアウト（設定）",
+          "steps": [
+            { "from": "user", "to": "browser", "label": "他の端末をログアウト" },
+            { "from": "browser", "to": "next", "label": "revokeOtherSessions()" },
+            { "from": "next", "to": "db", "label": "requireUser で照合" },
+            { "from": "next", "to": "db", "label": "自分以外の行を削除" },
+            { "note": "user_id で限定＝他人の行は消せない", "over": ["db"] },
+            { "from": "next", "to": "db", "label": "監査 session_revoked" }
+          ]
+        },
+        {
+          "label": "パスワード変更（設定）",
+          "steps": [
+            { "from": "user", "to": "browser", "label": "現在と新しいパスワード" },
+            { "from": "browser", "to": "next", "label": "changePassword()" },
+            { "from": "next", "to": "next", "label": "現在のパスワードを照合" },
+            { "from": "next", "to": "db", "label": "新しいハッシュを保存" },
+            { "from": "next", "to": "db", "label": "他の端末の行を削除" },
+            { "from": "next", "to": "db", "label": "監査 session_revoked" }
+          ]
+        }
+      ]
+    },
+    { "from": "other", "to": "next", "label": "次のリクエスト（古い Cookie）" },
+    { "from": "next", "to": "db", "label": "sha256(Cookie) で検索" },
+    { "from": "db", "to": "next", "label": "該当なし", "reply": true },
+    { "from": "next", "to": "other", "label": "/login へ（API は 401）", "reply": true }
+  ],
+  "notes": [
+    {
+      "title": "なぜ即座に失効できるか",
+      "kind": "datastore",
+      "items": [
+        "Cookie は中身の無い乱数（opaque）で、正しいかは毎回 DB に聞く",
+        "行を消した瞬間に、その Cookie は使えなくなる",
+        "署名付きトークン（JWT）と違い、失効リストが要らない"
+      ]
+    },
+    {
+      "title": "失効の単位",
+      "kind": "client",
+      "items": [
+        "設定画面から1台ずつ失効できる（現在の端末は不可＝ログアウトを使う）",
+        "パスワード変更は現在の端末を残し、他をすべて失効",
+        "どの操作も auth_events に残る（管理者は /logs/auth で見られる）"
+      ]
+    }
+  ]
+}

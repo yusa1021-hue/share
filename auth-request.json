@@ -1,0 +1,208 @@
+{
+  "format": 1,
+  "type": "sequence",
+  "title": "② ログイン後のページ表示",
+  "description": "Cookie 付きのリクエストを、どこで・何で認証しているか（Caddy・proxy.ts の経路は①と同じ）",
+  "lang": "ja",
+  "numbered": true,
+  "participants": [
+    {
+      "id": "browser",
+      "kind": "client",
+      "label": "ブラウザ",
+      "sublabel": "Cookie: __Host-session"
+    },
+    {
+      "id": "page",
+      "kind": "service",
+      "label": "ページ",
+      "sublabel": "各 page.tsx"
+    },
+    {
+      "id": "layout",
+      "kind": "service",
+      "label": "レイアウト",
+      "sublabel": "(app)/layout.tsx"
+    },
+    {
+      "id": "dal",
+      "kind": "security",
+      "label": "DAL",
+      "sublabel": "src/auth/dal.ts"
+    },
+    {
+      "id": "db",
+      "kind": "datastore",
+      "label": "PostgreSQL",
+      "sublabel": "sessions・users"
+    }
+  ],
+  "steps": [
+    {
+      "from": "browser",
+      "to": "page",
+      "label": "GET /tasks（Cookie 付き）"
+    },
+    {
+      "note": "同じリクエストで並行に描画",
+      "over": [
+        "page",
+        "layout"
+      ]
+    },
+    {
+      "from": "page",
+      "to": "dal",
+      "label": "requireUser()"
+    },
+    {
+      "from": "layout",
+      "to": "dal",
+      "label": "getCurrentSession()"
+    },
+    {
+      "note": "React cache で照合は1回",
+      "over": [
+        "dal"
+      ]
+    },
+    {
+      "from": "dal",
+      "to": "db",
+      "label": "sha256(Cookie) で検索"
+    },
+    {
+      "from": "db",
+      "to": "dal",
+      "label": "セッション＋ユーザー",
+      "reply": true
+    },
+    {
+      "block": "alt",
+      "label": "有効",
+      "steps": [
+        {
+          "block": "opt",
+          "label": "残り期限が半分未満",
+          "steps": [
+            {
+              "from": "dal",
+              "to": "db",
+              "label": "expires_at を延長"
+            },
+            {
+              "note": "Cookie は再発行しない",
+              "over": [
+                "dal"
+              ]
+            }
+          ]
+        },
+        {
+          "from": "dal",
+          "to": "db",
+          "label": "last_used_at を更新"
+        },
+        {
+          "block": "opt",
+          "label": "管理者面（/logs）",
+          "steps": [
+            {
+              "from": "dal",
+              "to": "db",
+              "label": "is_admin を DB で再確認"
+            }
+          ]
+        },
+        {
+          "from": "dal",
+          "to": "page",
+          "label": "user",
+          "reply": true
+        },
+        {
+          "from": "page",
+          "to": "db",
+          "label": "画面のデータを取得"
+        },
+        {
+          "from": "page",
+          "to": "browser",
+          "label": "HTML／RSC",
+          "reply": true
+        }
+      ],
+      "else": [
+        {
+          "label": "無い・期限切れ",
+          "steps": [
+            {
+              "from": "dal",
+              "to": "db",
+              "label": "期限切れなら行を削除"
+            },
+            {
+              "from": "dal",
+              "to": "page",
+              "label": "redirect(\"/login\")",
+              "reply": true
+            },
+            {
+              "from": "page",
+              "to": "browser",
+              "label": "307 → /login",
+              "reply": true
+            },
+            {
+              "note": "ページ側でも止まる＝データは出ない",
+              "over": [
+                "page"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "title": "認証の境界＝DAL",
+      "kind": "security",
+      "items": [
+        "境界は各 page.tsx 先頭の requireUser()／requireAdminPage()",
+        "レイアウトの判定は多層防御であって境界ではない",
+        "proxy.ts（旧 middleware）では認証しない（CVE-2025-29927）",
+        "2026-09-23 時点で全 15 ページにゲートがあることを確認"
+      ]
+    },
+    {
+      "title": "2026-07-17 の事故",
+      "kind": "service",
+      "items": [
+        "レイアウトが redirect してもページの描画は止まらない",
+        "RSC: 1 ヘッダ付きだとページのデータが応答に載った",
+        "/tasks・/mail・/finance など 6 ページが無認証で読めた",
+        "検査は Cookie 無しの curl -H 'RSC: 1'（307 は証拠にならない）"
+      ]
+    },
+    {
+      "title": "呼び出し元ごとのゲート",
+      "kind": "client",
+      "items": [
+        "API（route.ts）はセッション無しで 401 を返す",
+        "ブラウザは 401 を受けたら /login?notice=expired へ",
+        "Server Action は requireUser／requireAdminSoft",
+        "ゲート無しの API は health（ok だけ）と OAuth コールバック（state＋PKCE）"
+      ]
+    },
+    {
+      "title": "有効期限",
+      "kind": "datastore",
+      "items": [
+        "既定 30 日（設定で 1〜365 日）",
+        "残りが半分を切ると DB 側の期限を延ばす",
+        "Cookie の期限はログイン時のまま＝実際はログインから 30 日で切れる"
+      ]
+    }
+  ]
+}

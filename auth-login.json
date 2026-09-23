@@ -1,0 +1,277 @@
+{
+  "format": 1,
+  "type": "sequence",
+  "title": "① ログイン",
+  "description": "/login のフォーム送信から、セッション Cookie の発行まで（フェーズA＝Caddy＋mkcert の現構成）",
+  "lang": "ja",
+  "numbered": true,
+  "participants": [
+    {
+      "id": "user",
+      "kind": "person",
+      "label": "利用者"
+    },
+    {
+      "id": "browser",
+      "kind": "client",
+      "label": "ブラウザ"
+    },
+    {
+      "id": "caddy",
+      "kind": "infra",
+      "label": "Caddy",
+      "sublabel": "TLS 終端（mkcert）"
+    },
+    {
+      "id": "proxy",
+      "kind": "security",
+      "label": "proxy.ts",
+      "sublabel": "CSP 付与のみ"
+    },
+    {
+      "id": "next",
+      "kind": "service",
+      "label": "Next.js",
+      "sublabel": "Server Action／src/auth"
+    },
+    {
+      "id": "db",
+      "kind": "datastore",
+      "label": "PostgreSQL",
+      "sublabel": "users・sessions・auth_events"
+    }
+  ],
+  "steps": [
+    {
+      "from": "user",
+      "to": "browser",
+      "label": "/login を開く"
+    },
+    {
+      "from": "browser",
+      "to": "caddy",
+      "label": "GET /login（HTTPS）"
+    },
+    {
+      "note": "X-Real-IP を接続元で上書き",
+      "over": [
+        "caddy"
+      ]
+    },
+    {
+      "from": "caddy",
+      "to": "proxy",
+      "label": "転送"
+    },
+    {
+      "from": "proxy",
+      "to": "proxy",
+      "label": "nonce を作り CSP を付与"
+    },
+    {
+      "from": "proxy",
+      "to": "next",
+      "label": "転送（認証は判定しない）"
+    },
+    {
+      "block": "opt",
+      "label": "Cookie がある",
+      "steps": [
+        {
+          "from": "next",
+          "to": "db",
+          "label": "セッションを照合"
+        },
+        {
+          "from": "next",
+          "to": "browser",
+          "label": "ログイン済みなら / へ",
+          "reply": true
+        }
+      ]
+    },
+    {
+      "from": "next",
+      "to": "browser",
+      "label": "フォーム＋CSP ヘッダ",
+      "reply": true
+    },
+    {
+      "from": "user",
+      "to": "browser",
+      "label": "ユーザー名とパスワード"
+    },
+    {
+      "from": "browser",
+      "to": "next",
+      "label": "Server Action の POST"
+    },
+    {
+      "note": "2〜5 と同じ経路（Caddy→proxy.ts）",
+      "over": [
+        "caddy",
+        "proxy"
+      ]
+    },
+    {
+      "from": "next",
+      "to": "next",
+      "label": "Origin を照合（CSRF）"
+    },
+    {
+      "from": "next",
+      "to": "next",
+      "label": "zod で入力の形を検証"
+    },
+    {
+      "from": "next",
+      "to": "db",
+      "label": "ユーザーを検索"
+    },
+    {
+      "from": "db",
+      "to": "next",
+      "label": "ハッシュ・失敗回数・ロック",
+      "reply": true
+    },
+    {
+      "block": "alt",
+      "label": "ロック中",
+      "steps": [
+        {
+          "from": "next",
+          "to": "db",
+          "label": "監査 login_failure（locked）"
+        },
+        {
+          "from": "next",
+          "to": "browser",
+          "label": "「試行の上限に達しました」",
+          "reply": true
+        }
+      ],
+      "else": [
+        {
+          "label": "ロックなし",
+          "steps": [
+            {
+              "from": "next",
+              "to": "next",
+              "label": "scrypt で照合"
+            },
+            {
+              "note": "不在ユーザーもダミーで計算",
+              "over": [
+                "next"
+              ]
+            },
+            {
+              "block": "alt",
+              "label": "一致",
+              "steps": [
+                {
+                  "from": "next",
+                  "to": "db",
+                  "label": "失敗回数を 0 に戻す"
+                },
+                {
+                  "from": "next",
+                  "to": "db",
+                  "label": "監査 login_success"
+                },
+                {
+                  "from": "next",
+                  "to": "next",
+                  "label": "256bit のトークンを生成"
+                },
+                {
+                  "from": "next",
+                  "to": "db",
+                  "label": "sha256(トークン) を保存"
+                },
+                {
+                  "from": "next",
+                  "to": "browser",
+                  "label": "Set-Cookie ＋ / へ遷移",
+                  "reply": true
+                },
+                {
+                  "note": "生のトークンは Cookie にだけ",
+                  "over": [
+                    "browser"
+                  ]
+                }
+              ],
+              "else": [
+                {
+                  "label": "不一致",
+                  "steps": [
+                    {
+                      "from": "next",
+                      "to": "db",
+                      "label": "失敗回数＋1（上限でロック）"
+                    },
+                    {
+                      "from": "next",
+                      "to": "db",
+                      "label": "監査 login_failure／lockout"
+                    },
+                    {
+                      "from": "next",
+                      "to": "browser",
+                      "label": "「ユーザー名またはパスワード…」",
+                      "reply": true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "title": "パスワードの照合",
+      "kind": "service",
+      "items": [
+        "scrypt（N=2^16・r=8・p=1＝約 64MiB）＋16 バイトのソルト",
+        "NFKC で正規化してから計算（全角・半角の揺れを吸収）",
+        "比較は timingSafeEqual（一致した桁数が時間に出ない）",
+        "存在しないユーザーでもダミーのハッシュで同じだけ計算する"
+      ]
+    },
+    {
+      "title": "セッション Cookie",
+      "kind": "client",
+      "items": [
+        "__Host-session＝Secure・Path=/・Domain なしを強制",
+        "HttpOnly＝JavaScript から読めない（XSS で盗めない）",
+        "SameSite=Strict＝他サイト起点のリクエストには付かない",
+        "DB には sha256 だけ＝DB が漏れても Cookie を作れない",
+        "ログインのたびに新しいトークン（固定化攻撃を防ぐ）"
+      ]
+    },
+    {
+      "title": "総当たり対策",
+      "kind": "security",
+      "items": [
+        "失敗 5 回で 15 分ロック（設定で 3〜20 回／1〜1440 分）",
+        "ロックはユーザー単位（IP 単位ではない）",
+        "不在ユーザーとパスワード違いは同じ文言を返す",
+        "ロックが解けても失敗回数は成功するまで残る"
+      ]
+    },
+    {
+      "title": "前段と記録",
+      "kind": "infra",
+      "items": [
+        "監査の IP は X-Real-IP だけを読む（左端の XFF は偽装できる）",
+        "成功・失敗・ロックを auth_events へ（生パスワードは残さない）",
+        "CSP：script は nonce＋strict-dynamic・form-action 'self'",
+        "frame-ancestors 'none'（他サイトへの埋め込みを禁止）"
+      ]
+    }
+  ]
+}

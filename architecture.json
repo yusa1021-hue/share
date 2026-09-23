@@ -1,0 +1,95 @@
+{
+  "format": 1,
+  "type": "architecture",
+  "title": "個人用ダッシュボードの構成",
+  "description": "フェーズA（ローカル・https://localhost）の現行構成。docker-compose.yml ＋ docker-compose.prod.yml と src/worker を元に作成",
+  "lang": "ja",
+  "nodes": [
+    { "id": "user", "kind": "person", "label": "利用者（本人）", "col": 0, "row": 1 },
+    { "id": "browser", "kind": "client", "label": "ブラウザ", "sublabel": "https://localhost", "col": 1, "row": 1 },
+    { "id": "caddy", "kind": "infra", "label": "Caddy", "sublabel": "TLS 終端（mkcert）", "tag": "127.0.0.1", "col": 2, "row": 1 },
+    { "id": "web", "kind": "service", "label": "Web", "sublabel": "Next.js（App Router）", "col": 3, "row": 1 },
+    { "id": "postgres", "kind": "datastore", "label": "PostgreSQL 18", "sublabel": "業務データ＋pg-boss", "col": 4, "row": 1 },
+    { "id": "backup", "kind": "service", "label": "バックアップ", "sublabel": "pg_dump サイドカー", "col": 5, "row": 1 },
+    { "id": "dumps", "kind": "datastore", "label": "ダンプ保存先", "sublabel": "D: ドライブ", "tag": "日7・週4・月3", "col": 6, "row": 1 },
+    { "id": "summary", "kind": "service", "label": "AI 生成ワーカー", "sublabel": "RSS 要約・日次分析", "tag": "Docker 外", "col": 4, "row": 0 },
+    { "id": "guard", "kind": "security", "label": "外向き通信ガード", "sublabel": "safeFetch・SSRF 防御", "col": 3, "row": 3 },
+    { "id": "worker", "kind": "service", "label": "ワーカー", "sublabel": "pg-boss・cron", "col": 4, "row": 3 },
+    { "id": "books", "kind": "datastore", "label": "書籍ファイル", "sublabel": "BOOK_ROOT（D:）", "col": 6, "row": 3 },
+    { "id": "claude", "kind": "external", "label": "Claude", "sublabel": "claude CLI（headless）", "col": 7, "row": 0 },
+    { "id": "ext_ms", "kind": "external", "label": "Microsoft / Azure", "sublabel": "Graph・OAuth・翻訳", "col": 1.5, "row": 5 },
+    { "id": "ext_mail", "kind": "external", "label": "メールサーバ", "sublabel": "IMAP / SMTP", "col": 2.5, "row": 5 },
+    { "id": "ext_data", "kind": "external", "label": "公開データ", "sublabel": "株価・投信・為替・気象・祝日", "col": 3.5, "row": 5 },
+    { "id": "ext_feeds", "kind": "external", "label": "RSS・書籍サイト", "sublabel": "DB に登録した取得先", "col": 4.5, "row": 5 }
+  ],
+  "groups": [
+    {
+      "id": "host",
+      "label": "ホスト PC（Windows＋WSL2）",
+      "style": "boundary",
+      "contains": ["browser", "caddy", "web", "postgres", "backup", "dumps", "summary", "guard", "worker", "books"]
+    },
+    {
+      "id": "compose",
+      "label": "Docker Compose",
+      "style": "boundary",
+      "contains": ["caddy", "web", "postgres", "backup", "guard", "worker"]
+    }
+  ],
+  "edges": [
+    { "from": "user", "to": "browser", "primary": true },
+    { "from": "browser", "to": "caddy", "label": "HTTPS :443", "primary": true },
+    { "from": "caddy", "to": "web", "label": ":3000", "primary": true },
+    { "from": "web", "to": "postgres", "label": "SQL・ジョブ投入", "primary": true },
+    { "from": "worker", "to": "postgres", "label": "ジョブ取得", "async": true, "both": true },
+    { "from": "postgres", "to": "backup", "label": "pg_dump" },
+    { "from": "backup", "to": "dumps", "label": "毎日 04:00" },
+    { "from": "summary", "to": "postgres", "both": true },
+    { "from": "summary", "to": "claude", "label": "要約・分析" },
+    { "from": "web", "to": "guard" },
+    { "from": "worker", "to": "guard" },
+    { "from": "worker", "to": "books", "label": "DL 保存" },
+    { "from": "guard", "to": "ext_ms" },
+    { "from": "guard", "to": "ext_mail" },
+    { "from": "guard", "to": "ext_data" },
+    { "from": "guard", "to": "ext_feeds" }
+  ],
+  "notes": [
+    {
+      "title": "主な経路と認証",
+      "kind": "service",
+      "items": [
+        "ブラウザ → Caddy（TLS 終端）→ Next.js → PostgreSQL。ポートは 127.0.0.1 のみに公開",
+        "認証はページごとの requireUser()（src/auth/dal.ts）で強制。proxy.ts は CSP 専用で、レイアウトも境界にしない",
+        "セッションは opaque トークン（__Host-session）。DB にはハッシュだけを保存"
+      ]
+    },
+    {
+      "title": "非同期ジョブ",
+      "kind": "queue",
+      "items": [
+        "キューは pg-boss＝PostgreSQL 上のテーブル（Redis なし）",
+        "ワーカーが書籍DL・RSS 取得・メール同期・株価・天気・祝日を実行",
+        "本番ワーカーは esbuild の単一バンドル（node_modules を持たない）"
+      ]
+    },
+    {
+      "title": "外向き通信",
+      "kind": "security",
+      "items": [
+        "ガードは別プロセスではなく、Web とワーカーの中のライブラリ（src/lib/net）",
+        "DNS 解決後に非公開 IP を除外。書籍の画像はホストの許可リストで縛る",
+        "メールの IMAP / SMTP はポートを許可制にする。接続先の一覧は docs/OUTBOUND_HOSTS.md"
+      ]
+    },
+    {
+      "title": "運用上の注意",
+      "kind": "datastore",
+      "items": [
+        "AI 生成ワーカーはホストのターミナルで動く＝VSCode を開かない日は動かない",
+        "バックアップは DB と同じ基盤（pg-boss）に載せず、専用のサイドカーで実行",
+        "フェーズB では Caddy の前に Cloudflare Tunnel ＋ Access を置く（アプリのコードは変えない）"
+      ]
+    }
+  ]
+}

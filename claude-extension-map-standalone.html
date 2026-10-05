@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude 拡張マップ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  /* レイアウト：1カラムの読み物。図だけ横に広く、狭い画面では図の中で横スクロール。 */
+  :root {
+    --bg: #f5f7f8;
+    --panel: #ffffff;
+    --fg: #1b2230;
+    --muted: #5b6575;
+    --line: #c7ced8;
+    --accent: #0d7568;
+    --accent-soft: #e2f2ef;
+    --font-display: "Zen Kaku Gothic New", "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+    --font-body: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10141a; --panel: #19202a; --fg: #e5e9ef; --muted: #9aa4b3;
+      --line: #394352; --accent: #3fc6b3; --accent-soft: #15302d; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141a; --panel: #19202a; --fg: #e5e9ef; --muted: #9aa4b3;
+    --line: #394352; --accent: #3fc6b3; --accent-soft: #15302d; color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.75;
+    padding-inline: 16px;
+    padding-block: 40px 64px;
+  }
+  main { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+  .prose { max-width: 42em; }
+  h1, h2 { font-family: var(--font-display); text-wrap: balance; line-height: 1.35; margin: 0; }
+  h1 { font-size: clamp(26px, 4vw, 36px); }
+  h2 { font-size: 21px; }
+  p { margin: 0; }
+  section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .lead { font-size: 16.5px; color: var(--fg); }
+  .eyebrow { font-size: 12px; letter-spacing: 0.08em; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.88em; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+  /* 三行の定義（公式の枠組み） */
+  .trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .trio div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .trio .name { font-family: var(--font-display); font-size: 17px; display: block; }
+  .trio .plugin { border: 1.5px dashed var(--accent); background: var(--accent-soft); }
+  .trio .what { font-size: 13.5px; color: var(--muted); }
+
+  /* 図 */
+  figure { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 12px; }
+  figure svg { display: block; width: 100%; min-width: 900px; height: auto; color: var(--fg); }
+  figcaption { font-size: 13.5px; color: var(--muted); max-width: 52em; }
+  svg text { font-family: var(--font-body); fill: var(--fg); font-size: 12px; }
+  svg .t-title { font-weight: 700; font-size: 13.5px; }
+  svg .t-big { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+  svg .t-sub { fill: var(--muted); font-size: 11px; }
+  svg .t-mono { font-family: var(--font-mono); font-size: 11.5px; }
+  svg .lbl { fill: var(--muted); font-size: 11px; }
+  svg .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.25; }
+  svg .box-main { fill: var(--panel); stroke: var(--fg); stroke-width: 1.5; }
+  svg .box-plugin { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  svg .edge { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+  svg .edge-soft { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 4 4; }
+  svg .arrowhead { fill: var(--fg); }
+  svg .arrowhead-soft { fill: var(--muted); }
+
+  /* 表 */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12.5px; color: var(--muted); font-weight: 500; letter-spacing: 0.04em; background: var(--bg); }
+  tr:last-child td { border-bottom: 0; }
+  td.name { font-weight: 700; white-space: nowrap; }
+  td.mark { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.mark.no { color: var(--muted); }
+  .tag-plugin { display: inline-block; font-size: 11px; font-weight: 500; color: var(--accent); border: 1px dashed var(--accent); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+
+  /* 迷ったとき */
+  .choose { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+  .choose div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .choose .q { font-size: 13.5px; color: var(--muted); display: block; }
+  .choose .a { font-weight: 700; }
+
+  .sources { font-size: 13px; color: var(--muted); }
+  .sources ul { margin: 6px 0 0; padding-left: 1.2em; }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="prose" style="display:flex;flex-direction:column;gap:12px">
+    <span class="eyebrow">2026-10 時点の公式ドキュメントにもとづく</span>
+    <h1>Claude 拡張マップ</h1>
+    <p class="lead">Claude を拡張する仕組みは、大きく「道具を足す」「やり方を教える」「まとめて配る」の3つに分かれます。サブエージェント・フック・CLAUDE.md は主に Claude Code 側の仕組みで、この3つの間に入ります。</p>
+  </header>
+
+  <section>
+    <h2>まず3つの役割</h2>
+    <div class="trio">
+      <div><span class="name">コネクタ（MCP）</span><span class="what">道具を足す。外部のサービスやデータに Claude が触れるようにする。中身は MCP サーバーへの接続。</span></div>
+      <div><span class="name">スキル</span><span class="what">やり方を教える。手順・書式・チェックリストを書いたファイル（必要ならスクリプト付き）。依頼に合ったときだけ読まれる。</span></div>
+      <div class="plugin"><span class="name">プラグイン</span><span class="what">まとめて配る箱。スキル・コネクタ・コマンド・サブエージェント・フックを1回のインストールで入れる。</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>1つの依頼がどこを通るか</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1150 590" role="img" aria-label="依頼はアプリを経て Claude に渡る。Claude は CLAUDE.md とスキルの説明文を毎ターン読み、スキルの本文は依頼に合ったときだけ読む。ツールを呼ぶときは必ずフックを通り、組み込みツールは PC と Web を、コネクタは MCP サーバー経由で外部サービスを操作する。サブエージェントは別のコンテキストで作業し、結果だけを返す。点線の部品はプラグインにまとめて配れる。">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
+            </marker>
+            <marker id="ah-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrowhead-soft"/>
+            </marker>
+          </defs>
+
+          <!-- あなた -->
+          <rect class="box" x="16" y="236" width="112" height="64" rx="8"/>
+          <text class="t-title" x="72" y="263" text-anchor="middle">あなた</text>
+          <text class="t-sub" x="72" y="284" text-anchor="middle">依頼を送る</text>
+          <line class="edge" x1="128" y1="268" x2="166" y2="268" marker-end="url(#ah)"/>
+          <text class="lbl" x="147" y="258" text-anchor="middle">依頼</text>
+
+          <!-- アプリ -->
+          <rect class="box" x="170" y="196" width="128" height="144" rx="8"/>
+          <text class="t-title" x="234" y="224" text-anchor="middle">アプリ</text>
+          <text x="234" y="254" text-anchor="middle">チャット</text>
+          <text x="234" y="278" text-anchor="middle">Cowork</text>
+          <text x="234" y="302" text-anchor="middle">Claude Code</text>
+          <line class="edge" x1="298" y1="268" x2="350" y2="268" marker-end="url(#ah)"/>
+          <text class="lbl" x="324" y="258" text-anchor="middle">渡す</text>
+
+          <!-- Claude -->
+          <rect class="box-main" x="354" y="56" width="246" height="400" rx="10"/>
+          <text class="t-big" x="477" y="88" text-anchor="middle">Claude（モデル）</text>
+          <text class="t-sub" x="370" y="116">読んでいるもの</text>
+          <rect class="box" x="370" y="126" width="214" height="48" rx="6"/>
+          <text class="t-title" x="477" y="147" text-anchor="middle">CLAUDE.md・メモリ</text>
+          <text class="t-sub" x="477" y="165" text-anchor="middle">毎ターン全文</text>
+          <rect class="box-plugin" x="370" y="184" width="214" height="48" rx="6"/>
+          <text class="t-title" x="477" y="205" text-anchor="middle">スキルの説明文</text>
+          <text class="t-sub" x="477" y="223" text-anchor="middle">毎ターン（短い説明だけ）</text>
+          <rect class="box-plugin" x="370" y="242" width="214" height="48" rx="6"/>
+          <text class="t-title" x="477" y="263" text-anchor="middle">スキルの本文</text>
+          <text class="t-sub" x="477" y="281" text-anchor="middle">依頼に合ったときだけ読む</text>
+          <text x="477" y="336" text-anchor="middle">考える → ツールを呼ぶ</text>
+          <text x="477" y="356" text-anchor="middle">→ 結果を読む、を繰り返す</text>
+
+          <!-- フック（ツール呼び出しの関所） -->
+          <rect class="box-plugin" x="640" y="92" width="60" height="196" rx="6"/>
+          <text class="t-title" x="670" y="176" text-anchor="middle">フック</text>
+          <text class="t-sub" x="670" y="198" text-anchor="middle">前後で</text>
+          <text class="t-sub" x="670" y="214" text-anchor="middle">必ず</text>
+          <text class="t-sub" x="670" y="230" text-anchor="middle">実行</text>
+
+          <line class="edge" x1="600" y1="120" x2="640" y2="120"/>
+          <line class="edge" x1="700" y1="120" x2="746" y2="120" marker-end="url(#ah)"/>
+          <text class="lbl" x="723" y="111" text-anchor="middle">呼ぶ</text>
+          <line class="edge" x1="600" y1="240" x2="640" y2="240"/>
+          <line class="edge" x1="700" y1="240" x2="746" y2="240" marker-end="url(#ah)"/>
+          <text class="lbl" x="723" y="231" text-anchor="middle">呼ぶ</text>
+
+          <!-- ツール -->
+          <rect class="box" x="750" y="92" width="180" height="56" rx="6"/>
+          <text class="t-title" x="840" y="115" text-anchor="middle">組み込みツール</text>
+          <text class="t-sub" x="840" y="135" text-anchor="middle">Read・Edit・Bash・Web検索</text>
+          <rect class="box-plugin" x="750" y="212" width="180" height="56" rx="6"/>
+          <text class="t-title" x="840" y="235" text-anchor="middle">コネクタ（MCP）</text>
+          <text class="t-sub" x="840" y="255" text-anchor="middle">MCP サーバーへの接続</text>
+
+          <line class="edge" x1="930" y1="120" x2="976" y2="120" marker-end="url(#ah)"/>
+          <text class="lbl" x="953" y="111" text-anchor="middle">操作</text>
+          <line class="edge" x1="930" y1="240" x2="976" y2="240" marker-end="url(#ah)"/>
+          <text class="lbl" x="953" y="231" text-anchor="middle">操作</text>
+
+          <!-- 操作される側 -->
+          <rect class="box" x="980" y="92" width="150" height="56" rx="6"/>
+          <text class="t-title" x="1055" y="115" text-anchor="middle">PC・Web</text>
+          <text class="t-sub" x="1055" y="135" text-anchor="middle">ファイル・シェル・検索</text>
+          <rect class="box" x="980" y="212" width="150" height="56" rx="6"/>
+          <text class="t-title" x="1055" y="235" text-anchor="middle">外部サービス</text>
+          <text class="t-sub" x="1055" y="255" text-anchor="middle">Gmail・予定表・DB</text>
+
+          <!-- サブエージェント -->
+          <line class="edge" x1="440" y1="456" x2="440" y2="496" marker-end="url(#ah)"/>
+          <text class="lbl" x="448" y="482">任せる</text>
+          <line class="edge" x1="514" y1="500" x2="514" y2="460" marker-end="url(#ah)"/>
+          <text class="lbl" x="522" y="482">結果だけ返す</text>
+          <rect class="box-plugin" x="354" y="500" width="246" height="60" rx="8"/>
+          <text class="t-title" x="477" y="525" text-anchor="middle">サブエージェント</text>
+          <text class="t-sub" x="477" y="545" text-anchor="middle">別のコンテキストで作業する</text>
+          <polyline class="edge-soft" points="600,530 670,530 670,294" marker-end="url(#ah-soft)"/>
+          <text class="lbl" x="680" y="420">自分もツールを呼ぶ</text>
+
+          <!-- 凡例 -->
+          <rect class="box-plugin" x="800" y="444" width="40" height="24" rx="4"/>
+          <text x="852" y="455">点線＝プラグインに入れて</text>
+          <text x="852" y="474">まとめて配れるもの</text>
+        </svg>
+      </div>
+      <figcaption>Claude は1回の依頼の中で「考える → ツールを呼ぶ → 結果を読む」を何周もします。フックを設定しておくと、ツールを呼ぶたびに Claude の判断に関係なく必ず動きます（たとえば編集のたびにフォーマッタを走らせる）。ツールの前後のほか、セッションの開始や応答の終わりにも仕掛けられます。サブエージェントは長い調査などを別のコンテキストで片付け、本体には結果だけを返します。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>入れた場所によって、使える場所が変わる</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1150 300" role="img" aria-label="プラグインはマーケットプレイスに載っている1つのフォルダで、スキル・サブエージェント・フック・MCP サーバーを含む。claude.ai のアカウントに追加するとチャット・Cowork・Claude Code に同期され、Claude Code のコマンドで入れるとその PC だけで使える。">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
+            </marker>
+          </defs>
+
+          <rect class="box" x="16" y="108" width="176" height="84" rx="8"/>
+          <text class="t-title" x="104" y="140" text-anchor="middle">マーケットプレイス</text>
+          <text class="t-sub" x="104" y="161" text-anchor="middle">プラグインの一覧</text>
+          <text class="t-sub" x="104" y="177" text-anchor="middle">（カタログ）</text>
+          <line class="edge" x1="192" y1="150" x2="240" y2="150" marker-end="url(#ah2)"/>
+          <text class="lbl" x="216" y="141" text-anchor="middle">掲載</text>
+
+          <rect class="box-plugin" x="244" y="24" width="324" height="252" rx="10"/>
+          <text class="t-title" x="406" y="54" text-anchor="middle">プラグイン（1つのフォルダ）</text>
+          <text class="t-mono" x="262" y="96">.claude-plugin/plugin.json</text>
+          <text class="t-sub" x="552" y="96" text-anchor="end">名前・版</text>
+          <text class="t-mono" x="262" y="132">skills/&lt;名前&gt;/SKILL.md</text>
+          <text class="t-sub" x="552" y="132" text-anchor="end">スキル</text>
+          <text class="t-mono" x="262" y="168">agents/&lt;名前&gt;.md</text>
+          <text class="t-sub" x="552" y="168" text-anchor="end">サブエージェント</text>
+          <text class="t-mono" x="262" y="204">hooks/hooks.json</text>
+          <text class="t-sub" x="552" y="204" text-anchor="end">フック</text>
+          <text class="t-mono" x="262" y="240">.mcp.json</text>
+          <text class="t-sub" x="552" y="240" text-anchor="end">MCP サーバー</text>
+
+          <line class="edge" x1="568" y1="84" x2="612" y2="84" marker-end="url(#ah2)"/>
+          <text class="lbl" x="590" y="75" text-anchor="middle">追加</text>
+          <line class="edge" x1="568" y1="230" x2="612" y2="230" marker-end="url(#ah2)"/>
+          <text class="lbl" x="590" y="221" text-anchor="middle">追加</text>
+
+          <rect class="box" x="616" y="30" width="230" height="110" rx="8"/>
+          <text class="t-title" x="731" y="62" text-anchor="middle">claude.ai のアカウント</text>
+          <text class="t-sub" x="731" y="84" text-anchor="middle">Customize &gt; Plugins で追加</text>
+          <text class="t-sub" x="731" y="104" text-anchor="middle">コネクタ・スキルも同じ画面</text>
+
+          <rect class="box" x="616" y="180" width="230" height="100" rx="8"/>
+          <text class="t-title" x="731" y="211" text-anchor="middle">Claude Code のコマンド</text>
+          <text class="t-sub" x="731" y="233" text-anchor="middle">/plugin でインストール</text>
+          <text class="t-sub" x="731" y="253" text-anchor="middle">その PC の設定に入る</text>
+
+          <line class="edge" x1="846" y1="66" x2="892" y2="42" marker-end="url(#ah2)"/>
+          <line class="edge" x1="846" y1="86" x2="892" y2="90" marker-end="url(#ah2)"/>
+          <line class="edge" x1="846" y1="106" x2="892" y2="138" marker-end="url(#ah2)"/>
+          <text class="lbl" x="869" y="36" text-anchor="middle">同期</text>
+
+          <rect class="box" x="896" y="20" width="238" height="40" rx="6"/>
+          <text x="1015" y="45" text-anchor="middle">チャット（web・PC・スマホ）</text>
+          <rect class="box" x="896" y="70" width="238" height="40" rx="6"/>
+          <text x="1015" y="95" text-anchor="middle">Cowork</text>
+          <rect class="box" x="896" y="120" width="238" height="40" rx="6"/>
+          <text x="1015" y="145" text-anchor="middle">Claude Code（同じアカウント）</text>
+
+          <line class="edge" x1="846" y1="230" x2="892" y2="230" marker-end="url(#ah2)"/>
+          <text class="lbl" x="869" y="221" text-anchor="middle">その PC</text>
+          <rect class="box" x="896" y="210" width="238" height="40" rx="6"/>
+          <text x="1015" y="235" text-anchor="middle">Claude Code（その PC だけ）</text>
+        </svg>
+      </div>
+      <figcaption>claude.ai（またはデスクトップアプリ）の Customize で入れたコネクタ・スキル・プラグインはアカウントに保存され、同じアカウントでログインした Claude Code にも同期されます。Claude Code のコマンドで入れたものは、その PC に留まります。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>それぞれの違い</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>仕組み</th><th>何を足すか</th><th>いつ読まれる・動くか</th><th>このリポジトリでの例</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">コネクタ（MCP）<span class="tag-plugin">プラグイン可</span></td><td>外部サービスへのアクセス（道具）</td><td>接続しておき、Claude が必要なツールを呼ぶ</td><td><code>dashboard-db-ro</code>（DB の読み取り）、Claude Docs</td></tr>
+          <tr><td class="name">スキル<span class="tag-plugin">プラグイン可</span></td><td>手順・書式・チェックリスト（やり方）</td><td>説明文は毎ターン、本文は依頼に合ったときだけ。<code>/名前</code> でも呼べる</td><td><code>/deploy</code>・<code>/schema-change</code>・<code>/backup-ops</code></td></tr>
+          <tr><td class="name">コマンド<span class="tag-plugin">プラグイン可</span></td><td>名前で呼ぶ操作</td><td>Claude Code ではスキルに統合済み（<code>.claude/commands/</code> も引き続き動く）</td><td>—</td></tr>
+          <tr><td class="name">サブエージェント<span class="tag-plugin">プラグイン可</span></td><td>作業を任せる別の担当</td><td>Claude が委任し、別のコンテキストで作業して結果だけ返す</td><td>Explore・Plan</td></tr>
+          <tr><td class="name">フック<span class="tag-plugin">プラグイン可</span></td><td>決まった時点で必ず動くコマンド</td><td>ツール実行の前後など。Claude の判断を介さない</td><td>—</td></tr>
+          <tr><td class="name">CLAUDE.md</td><td>毎回守らせる事実・規約</td><td>毎ターン全文</td><td>このリポジトリの <code>CLAUDE.md</code></td></tr>
+          <tr><td class="name">組み込みツール</td><td>最初からある道具</td><td>Claude が呼ぶ。許可は権限設定で決まる</td><td>Read・Edit・Bash・Web検索</td></tr>
+          <tr><td class="name">プラグイン</td><td>上の「プラグイン可」をまとめた箱</td><td>有効な間、中身のスキルやエージェントの説明文が毎ターン載る</td><td><code>anthropic-skills:pdf</code> など、名前に <code>プラグイン名:</code> が付いたスキル</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>プラグインの中身が動く場所</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>部品</th><th style="text-align:center">チャット</th><th style="text-align:center">Cowork</th><th style="text-align:center">Claude Code</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">スキル</td><td class="mark">○</td><td class="mark">○</td><td class="mark">○</td></tr>
+          <tr><td class="name">コマンド</td><td class="mark">○（スキルとして）</td><td class="mark">○</td><td class="mark">○</td></tr>
+          <tr><td class="name">コネクタ（リモート）</td><td class="mark">○</td><td class="mark">○</td><td class="mark">○</td></tr>
+          <tr><td class="name">サブエージェント</td><td class="mark no">—</td><td class="mark">○</td><td class="mark">○</td></tr>
+          <tr><td class="name">フック</td><td class="mark no">—</td><td class="mark">○</td><td class="mark">○</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prose" style="font-size:13.5px;color:var(--muted)">ローカルで動くコネクタ（デスクトップ拡張・<code>.mcpb</code>）はデスクトップアプリ用です。Claude Code では、ローカルの MCP サーバーを <code>claude mcp add</code> で直接登録します。</p>
+  </section>
+
+  <section>
+    <h2>迷ったとき</h2>
+    <div class="choose">
+      <div><span class="q">外部のデータやサービスに触らせたい</span><span class="a">コネクタ（MCP）</span></div>
+      <div><span class="q">毎回同じ手順や書式を説明している</span><span class="a">スキル</span></div>
+      <div><span class="q">常に守らせたい規約がある</span><span class="a">CLAUDE.md</span></div>
+      <div><span class="q">長い調査で会話を散らかしたくない</span><span class="a">サブエージェント</span></div>
+      <div><span class="q">Claude の判断に任せず、毎回必ず実行したい</span><span class="a">フック</span></div>
+      <div><span class="q">いくつかを組み合わせて人に配りたい</span><span class="a">プラグイン</span></div>
+    </div>
+  </section>
+
+  <footer class="sources">
+    出典（Anthropic の公式ドキュメント）
+    <ul>
+      <li><a href="https://claude.com/docs/extend/overview">Connectors, skills, and plugins</a></li>
+      <li><a href="https://claude.com/docs/connectors/overview">Get started with connectors</a></li>
+      <li><a href="https://claude.com/docs/plugins/overview">Plugins（claude.ai・Cowork）</a></li>
+      <li><a href="https://code.claude.com/docs/en/plugins">Plugins overview（Claude Code）</a></li>
+      <li><a href="https://code.claude.com/docs/en/skills">Agent Skills in Claude Code</a></li>
+    </ul>
+  </footer>
+</main>
+</body>
+</html>
